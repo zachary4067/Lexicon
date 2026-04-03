@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Multiplication Tank</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+
+body{
+margin:0;
+background:black;
+font-family:monospace;
+overflow:hidden;
+color:white;
+}
+
+canvas{
+display:block;
+margin:auto;
+}
+
+#hud{
+text-align:center;
+padding:10px;
+background:#111;
+}
+
+#controls{
+display:flex;
+justify-content:center;
+gap:20px;
+margin-top:8px;
+}
+
+button{
+font-size:22px;
+padding:10px 20px;
+background:#222;
+color:white;
+border:1px solid #555;
+border-radius:8px;
+}
+
+#overlay{
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
+display:none;
+justify-content:center;
+align-items:center;
+flex-direction:column;
+background:rgba(0,0,0,0.85);
+font-size:48px;
+text-align:center;
+}
+
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="overlay">
+<div id="overlayText"></div>
+<div id="overlayScore" style="font-size:32px;margin-top:20px;"></div>
+</div>
+
+<div id="hud">
+<div id="score">Score: 0 | Missiles: 5</div>
+
+<div id="controls">
+<button id="leftBtn">◀</button>
+<button id="fireBtn">▲</button>
+<button id="rightBtn">▶</button>
+</div>
+</div>
+
+<script>
+
+/* ================= CONFIG ================= */
+
+const TARGET_COUNT = 3;
+const TARGET_SIZE = 60;
+const TANK_WIDTH = 60;
+
+const TARGET_SPEED = 40;
+const MISSILE_SPEED = 600;
+
+const FIRE_COOLDOWN = 0.33;
+
+const MAX_MISSILES = 5;
+const RELOAD_RATE = 1;
+
+/* ================= STATE ================= */
+
+let canvas=document.getElementById("game");
+let ctx=canvas.getContext("2d");
+
+let width,height,horizon;
+
+let level=1;
+let multiplier;
+let product;
+
+let score=0;
+
+let tankX;
+
+let missiles=[];
+let targets=[];
+let explosions=[];
+
+let multipliers=[];
+
+let spawning=false;
+let spawnTimer=0;
+
+let gameFrozen=false;
+
+let missilesRemaining=MAX_MISSILES;
+let reloadAccumulator=0;
+
+let lastFireTime=0;
+
+/* ================= RESIZE ================= */
+
+function resize(){
+
+width=window.innerWidth;
+height=window.innerHeight-document.getElementById("hud").offsetHeight;
+
+canvas.width=width;
+canvas.height=height;
+
+horizon=height-40;
+
+tankX=width/2;
+
+}
+
+window.addEventListener("resize",resize);
+resize();
+
+/* ================= LEVEL ================= */
+
+function startLevel(){
+
+multipliers=[];
+for(let i=1;i<=12;i++) multipliers.push(i);
+
+shuffle(multipliers);
+
+nextEquation();
+
+}
+
+function nextEquation(){
+
+if(multipliers.length===0){
+levelComplete();
+return;
+}
+
+multiplier=multipliers.pop();
+product=level*multiplier;
+
+spawnTargets();
+
+}
+
+/* ================= TARGET SPAWN ================= */
+
+function spawnTargets(){
+
+targets=[];
+
+let numbers=[product];
+
+let table=[];
+
+for(let i=1;i<=12;i++){
+let v=level*i;
+if(v!==product) table.push(v);
+}
+
+shuffle(table);
+
+for(let i=0;i<TARGET_COUNT-1;i++) numbers.push(table[i]);
+
+shuffle(numbers);
+
+for(let n of numbers){
+
+let x;
+let tries=0;
+
+do{
+x=Math.random()*(width-TARGET_SIZE);
+tries++;
+}while(overlap(x) && tries<50);
+
+targets.push({
+x:x,
+y:-Math.random()*200,
+value:n
+});
+
+}
+
+/* reset missiles */
+
+missilesRemaining=MAX_MISSILES;
+reloadAccumulator=0;
+
+updateScore();
+
+}
+
+function overlap(x){
+
+for(let t of targets){
+if(Math.abs(t.x-x)<TARGET_SIZE) return true;
+}
+
+return false;
+
+}
+
+/* ================= INPUT ================= */
+
+let left=false;
+let right=false;
+
+document.addEventListener("keydown",e=>{
+
+if(e.key==="ArrowLeft") left=true;
+if(e.key==="ArrowRight") right=true;
+
+if(e.code==="Space") fire();
+
+});
+
+document.addEventListener("keyup",e=>{
+
+if(e.key==="ArrowLeft") left=false;
+if(e.key==="ArrowRight") right=false;
+
+});
+
+/* touch */
+
+leftBtn.onpointerdown=e=>{e.preventDefault();left=true};
+leftBtn.onpointerup=e=>{left=false};
+
+rightBtn.onpointerdown=e=>{e.preventDefault();right=true};
+rightBtn.onpointerup=e=>{right=false};
+
+fireBtn.onpointerdown=e=>{e.preventDefault();fire()};
+
+/* ================= FIRE ================= */
+
+function fire(){
+
+if(gameFrozen) return;
+
+let now=performance.now()/1000;
+
+if(now-lastFireTime < FIRE_COOLDOWN) return;
+if(missilesRemaining<=0) return;
+
+lastFireTime=now;
+
+missilesRemaining--;
+
+updateScore();
+
+/* alignment detection */
+
+let aligned=[];
+
+for(let t of targets){
+
+if(tankX>=t.x && tankX<=t.x+TARGET_SIZE){
+aligned.push(t);
+}
+
+}
+
+let locked=null;
+
+if(aligned.length>0){
+
+locked=aligned[0];
+
+for(let t of aligned){
+if(t.y>locked.y) locked=t;
+}
+
+}
+
+missiles.push({
+x:tankX,
+y:horizon,
+target:locked
+});
+
+}
+
+/* ================= UPDATE ================= */
+
+function update(dt){
+
+if(gameFrozen) return;
+
+/* tank motion */
+
+let speed=320;
+
+if(left) tankX-=speed*dt;
+if(right) tankX+=speed*dt;
+
+tankX=Math.max(TANK_WIDTH/2,Math.min(width-TANK_WIDTH/2,tankX));
+
+/* missile reload */
+
+if(missilesRemaining < MAX_MISSILES){
+
+reloadAccumulator += dt;
+
+if(reloadAccumulator >= 1/RELOAD_RATE){
+
+missilesRemaining++;
+reloadAccumulator = 0;
+
+updateScore();
+
+}
+
+}
+
+/* missiles */
+
+for(let m of missiles){
+
+m.y -= MISSILE_SPEED*dt;
+
+if(m.target && m.y <= m.target.y + TARGET_SIZE){
+
+hitTarget(m.target);
+m.target=null;
+
+}
+
+}
+
+missiles=missiles.filter(m=>m.y>-20);
+
+/* targets */
+
+for(let t of targets){
+
+t.y+=TARGET_SPEED*dt;
+
+if(t.y+TARGET_SIZE>=horizon){
+gameOver();
+}
+
+}
+
+/* explosions */
+
+for(let e of explosions) e.t-=dt;
+explosions=explosions.filter(e=>e.t>0);
+
+/* spawn delay */
+
+if(spawning){
+
+spawnTimer-=dt;
+
+if(spawnTimer<=0){
+
+spawning=false;
+nextEquation();
+
+}
+
+}
+
+}
+
+/* ================= HIT ================= */
+
+function hitTarget(t){
+
+explosions.push({x:t.x,y:t.y,t:0.6});
+
+if(t.value===product){
+
+score+=10;
+
+for(let other of targets){
+
+if(other!==t)
+explosions.push({x:other.x,y:other.y,t:0.6});
+
+}
+
+targets=[];
+
+spawning=true;
+spawnTimer=1;
+
+}else{
+
+score+=1;
+targets.splice(targets.indexOf(t),1);
+
+}
+
+updateScore();
+
+}
+
+/* ================= DRAW ================= */
+
+function draw(){
+
+ctx.fillStyle="black";
+ctx.fillRect(0,0,width,height);
+
+/* equation */
+
+ctx.fillStyle="rgba(60,140,255,0.9)";
+ctx.font="110px monospace";
+ctx.textAlign="center";
+ctx.fillText(level+" × "+multiplier+" = ?",width/2,height/2);
+
+/* horizon */
+
+ctx.strokeStyle="white";
+ctx.beginPath();
+ctx.moveTo(0,horizon);
+ctx.lineTo(width,horizon);
+ctx.stroke();
+
+/* tank */
+
+ctx.fillStyle="lime";
+ctx.fillRect(tankX-TANK_WIDTH/2,horizon-20,TANK_WIDTH,20);
+
+/* missiles */
+
+ctx.fillStyle="red";
+
+for(let m of missiles){
+ctx.fillRect(m.x-3,m.y-12,6,12);
+}
+
+/* targets */
+
+ctx.font="24px monospace";
+
+for(let t of targets){
+
+ctx.fillStyle="#0f0";
+ctx.fillRect(t.x,t.y,TARGET_SIZE,TARGET_SIZE);
+
+ctx.fillStyle="white";
+ctx.fillText(t.value,t.x+TARGET_SIZE/2,t.y+36);
+
+}
+
+/* explosions */
+
+ctx.font="90px serif";
+
+for(let e of explosions){
+ctx.fillText("💥",e.x,e.y);
+}
+
+}
+
+/* ================= LOOP ================= */
+
+let last=performance.now();
+
+function loop(now){
+
+let dt=(now-last)/1000;
+last=now;
+
+update(dt);
+draw();
+
+requestAnimationFrame(loop);
+
+}
+
+/* ================= SCORE ================= */
+
+function updateScore(){
+
+document.getElementById("score").innerText =
+"Score: "+score+" | Missiles: "+missilesRemaining;
+
+}
+
+/* ================= OVERLAYS ================= */
+
+function showOverlay(text){
+
+let o=document.getElementById("overlay");
+
+document.getElementById("overlayText").innerText=text;
+document.getElementById("overlayScore").innerText="Score: "+score;
+
+o.style.display="flex";
+
+}
+
+function hideOverlay(){
+document.getElementById("overlay").style.display="none";
+}
+
+/* ================= LEVEL COMPLETE ================= */
+
+function levelComplete(){
+
+gameFrozen=true;
+
+showOverlay("LEVEL "+level+" COMPLETE");
+
+setTimeout(()=>{
+
+hideOverlay();
+level++;
+gameFrozen=false;
+
+startLevel();
+
+},2000);
+
+}
+
+/* ================= GAME OVER ================= */
+
+function gameOver(){
+
+gameFrozen=true;
+showOverlay("GAME OVER");
+
+}
+
+/* ================= UTILS ================= */
+
+function shuffle(a){
+
+for(let i=a.length-1;i>0;i--){
+
+let j=Math.floor(Math.random()*(i+1));
+[a[i],a[j]]=[a[j],a[i]];
+
+}
+
+}
+
+/* ================= START ================= */
+
+startLevel();
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
