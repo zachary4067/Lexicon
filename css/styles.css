@@ -1,0 +1,158 @@
+/*
+ * css/styles.css — LEXICON Wordle Solver
+ * v1.0
+ *
+ * PURPOSE OF THIS FILE
+ * ─────────────────────
+ * This file provides only the immediate first-paint layer — the styles that
+ * must exist before JavaScript runs. The full LEXICON design system
+ * (layout, tiles, buttons, modals, animations) is injected at runtime
+ * by ui.js's injectStyles() function, which appends a <style> element
+ * to <head> containing CSS_VARS + APP_STYLES.
+ *
+ * If you open index.html without JS, you will see a dark, centred
+ * "not available without JavaScript" message. Once JS initialises,
+ * ui.js takes full control of the page.
+ *
+ * WHAT IS HERE:
+ *   1. Box-sizing and margin/padding reset
+ *   2. Dark background — prevents white flash before JS paints the loading overlay
+ *   3. Pre-JS loading pulse — a CSS-only indicator during JS parse time
+ *   4. Noscript fallback message
+ *   5. Colour-blind CSS variable overrides (mirrors ui.js CSS_VARS)
+ *   6. Focus-visible ring (single global rule, safe to have in both files)
+ *
+ * TechSpec refs: §1.1 (single CSS file), §6.5 (CSS custom properties),
+ *               §10.2 (colour-blind mode), PRD §9.5 ACC-1
+ */
+
+/* ══════════════════════════════════════════════════════════════════
+   1. UNIVERSAL RESET
+   ══════════════════════════════════════════════════════════════════ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2. BASE — prevents white flash on first paint
+      ui.js will override these on body once injectStyles() runs.
+   ══════════════════════════════════════════════════════════════════ */
+
+html {
+  height: 100%;
+  /* Matches --bg-primary in ui.js CSS_VARS */
+  background: #121213;
+}
+
+body {
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: #121213;
+  color: #ffffff;
+  min-height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Suppress iOS tap highlight before ui.js sets it */
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   3. PRE-JS LOADING PULSE
+      A CSS-only spinner shown while the JavaScript module graph is
+      being parsed and executed. ui.js's buildDOMScaffold() replaces
+      body.innerHTML, which also removes this pseudo-element.
+      Result: zero layout shift, zero white flash.
+   ══════════════════════════════════════════════════════════════════ */
+
+body:empty::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* App name shown centred before any DOM exists */
+body:empty::after {
+  content: 'LEXICON';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  color: #3a3a3c;          /* muted — JS loading overlay will take over */
+  animation: lexicon-pulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes lexicon-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.7; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   4. NOSCRIPT FALLBACK
+   ══════════════════════════════════════════════════════════════════ */
+
+.noscript-msg {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: #121213;
+}
+
+.noscript-msg p {
+  max-width: 320px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #818384;
+  border: 1px solid #3a3a3c;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   5. COLOUR-BLIND CSS VARIABLE OVERRIDES
+      Mirrors the same block in ui.js CSS_VARS so the override
+      is available even during the brief window before JS runs.
+      PRD §9.5 ACC-1  |  TechSpec §6.5, §10.2
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Default palette — overridden when body.colour-blind is present */
+  --colour-green:  #538D4E;
+  --colour-yellow: #B59F3B;
+  --colour-grey:   #3A3A3C;
+}
+
+/* Deuteranopia-safe swap (applyColourBlind adds this class to body) */
+body.colour-blind {
+  --colour-green:  #1565C0;   /* blue  */
+  --colour-yellow: #E65100;   /* orange */
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   6. GLOBAL FOCUS RING
+      Defined here as the single authoritative rule.
+      ui.js APP_STYLES also contains :focus-visible for completeness,
+      but browser specificity means whichever loads last wins — both
+      produce the same green ring so there is no conflict.
+      TechSpec §10.3
+   ══════════════════════════════════════════════════════════════════ */
+
+:focus-visible {
+  outline: 2px solid var(--colour-green);
+  outline-offset: 2px;
+}

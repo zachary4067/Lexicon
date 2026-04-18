@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+
+  <!--
+    viewport: width=device-width is required for the 375px mobile layout.
+    viewport-fit=cover extends into iPhone notch area.
+    maximum-scale=1 prevents iOS double-tap zoom on tiles (UX: tiles are
+    interactive buttons, not zoomable text). PRD §9.2a, G-7.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0,
+        maximum-scale=1.0, viewport-fit=cover" />
+
+  <!-- Browser chrome colour — matches --bg-primary (#121213) -->
+  <meta name="theme-color" content="#121213" />
+
+  <!-- iOS home screen / PWA hints -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LEXICON" />
+
+  <meta name="description"
+        content="LEXICON — Statistically optimal Wordle solver.
+                 Minimises expected remaining candidates after every guess." />
+
+  <title>LEXICON</title>
+
+  <!--
+    Pre-JS base styles.
+    Provides the dark background immediately so there is no white flash
+    while the JavaScript module graph is fetched and parsed.
+    The full LEXICON design system is injected at runtime by ui.js's
+    injectStyles() function. See css/styles.css for details.
+  -->
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body>
+  <!--
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║  BODY IS INTENTIONALLY EMPTY                                     ║
+    ║                                                                  ║
+    ║  ui.js's buildDOMScaffold() sets document.body.innerHTML with    ║
+    ║  the complete DOM tree (header, main panels, modals, nav).       ║
+    ║  Nothing should be placed here that expects to survive the       ║
+    ║  innerHTML replacement.                                          ║
+    ╚══════════════════════════════════════════════════════════════════╝
+  -->
+
+  <!-- Fallback for users with JavaScript disabled -->
+  <noscript>
+    <div class="noscript-msg">
+      <p>LEXICON requires JavaScript. Please enable JavaScript in your
+         browser settings and refresh the page.</p>
+    </div>
+  </noscript>
+
+  <!--
+    ════════════════════════════════════════════════════════════════════
+    APPLICATION BOOTSTRAP
+    ════════════════════════════════════════════════════════════════════
+
+    Load order (order matters — _setCache MUST be called before init()):
+
+      Step 1 — Load idb-keyval from CDN.
+               idb-keyval wraps IndexedDB with a clean get/set/del API.
+               Used by matrix_loader.js to cache the ~30 MB pattern matrix
+               so it only has to be generated once per device.
+               TechSpec §3.4 (matrix_loader), §5.3 (IndexedDB schema).
+
+      Step 2 — Inject the idb adapter into matrix_loader via _setCache().
+               This MUST happen before init() calls loadMatrix().
+               If the CDN import fails (network error, CDN outage),
+               we fall back to a no-op adapter — the matrix will be
+               regenerated on every visit (slower, but correct).
+
+      Step 3 — Call ui.js init().
+               init() runs the full startup sequence:
+                 injectStyles → buildDOMScaffold → loadSettings →
+                 buildTileRow → wireEvents → loadMatrix → configure →
+                 initGame → hideLoadingOverlay → renderRound1 → tutorial
+               TechSpec §3.8 (ui.js init).
+
+    Target browsers (TechSpec §11.1):
+      Chrome 90+, Firefox 90+, Safari 14+, Edge 90+.
+      All support ES Modules, dynamic import(), Uint8Array, IndexedDB,
+      and <dialog>. Top-level await is NOT used for Safari 14.0 compat.
+
+    CDN: https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm
+         Pinned to major version 6. The +esm suffix requests the
+         ES Module build (no CommonJS wrapper needed).
+  -->
+  <script type="module">
+    (async () => {
+      // ── Step 1: Load idb-keyval from CDN ─────────────────────────────────
+      //    Attempt CDN load. On failure (offline, CDN outage), fall back to a
+      //    no-op adapter so the rest of the app still boots correctly.
+      //    Without caching, buildMatrix() runs on every cold start (~5–30s
+      //    depending on device), but the app remains fully functional.
+
+      let idbAdapter;
+
+      try {
+        const idb = await import(
+          'https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm'
+        );
+        idbAdapter = {
+          get: idb.get,
+          set: idb.set,
+          del: idb.del,
+        };
+      } catch (cdnErr) {
+        console.warn(
+          '[LEXICON] idb-keyval CDN import failed — matrix caching disabled. ' +
+          'The pattern matrix will be regenerated on every visit.',
+          cdnErr
+        );
+        // No-op adapter: get always returns null (cache miss),
+        // set and del are silent no-ops.
+        idbAdapter = {
+          get: async () => null,
+          set: async () => {},
+          del: async () => {},
+        };
+      }
+
+      // ── Step 2: Inject idb adapter into matrix_loader ────────────────────
+      //    matrix_loader.js's _setCache() stores the adapter so that
+      //    loadMatrix() can call cache.get / cache.set without knowing
+      //    about idb-keyval directly (inversion of control for testability).
+      //    TechSpec §3.4.
+
+      const { _setCache } = await import('./js/matrix_loader.js');
+      _setCache(idbAdapter);
+
+      // ── Step 3: Bootstrap the application ────────────────────────────────
+      //    ui.js's init() is the single entry point. It orchestrates:
+      //      • DOM scaffold construction
+      //      • Settings load and apply
+      //      • Matrix load (with loading overlay and progress updates)
+      //      • Solver configuration
+      //      • Round 1 render
+      //      • First-run tutorial (if hasSeenTutorial is false)
+      //    TechSpec §3.8.
+
+      const { init } = await import('./js/ui.js');
+      await init();
+
+    })().catch((fatalErr) => {
+      // ── Fatal bootstrap error handler ─────────────────────────────────────
+      //    Reached only if a module fails to import (e.g. missing file,
+      //    syntax error in source code). ui.js's own error handling covers
+      //    matrix load failures — this catches anything upstream of that.
+      //
+      //    We paint a minimal error screen directly onto body because
+      //    at this point buildDOMScaffold() may not have run, so the
+      //    #loading-overlay does not exist.
+
+      console.error('[LEXICON] Fatal bootstrap error:', fatalErr);
+
+      document.body.innerHTML = `
+        <div style="
+          display:flex; flex-direction:column; align-items:center;
+          justify-content:center; min-height:100vh; padding:24px;
+          background:#121213; color:#fff;
+          font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif;
+          text-align:center;
+        ">
+          <p style="
+            font-size:26px; font-weight:900; letter-spacing:8px;
+            margin-bottom:20px; color:#3a3a3c;
+          ">LEXICON</p>
+          <p style="
+            color:#E57373; font-size:14px; line-height:1.6;
+            max-width:280px; margin-bottom:20px;
+          ">Failed to load the application.<br>Please refresh the page.</p>
+          <button
+            onclick="location.reload()"
+            style="
+              padding:12px 28px; background:#538D4E; color:#fff;
+              border:none; border-radius:6px; font-size:13px;
+              font-weight:800; letter-spacing:2px; cursor:pointer;
+              text-transform:uppercase;
+            "
+          >Retry</button>
+        </div>
+      `;
+    });
+  </script>
+</body>
+</html>
