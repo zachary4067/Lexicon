@@ -2063,10 +2063,9 @@ function _renderTutorialStep(modal) {
     `<span class="tutorial-dot ${i === _tutorialStep ? 'active' : ''}"></span>`
   ).join('');
 
-  modal.innerHTML = `
+modal.innerHTML = `
     <div class="modal-header">
       <span class="modal-title">Tutorial</span>
-      <button class="modal-close" aria-label="Skip tutorial">Skip</button>
     </div>
     <div class="modal-body">
       <div class="tutorial-step active">
@@ -2083,11 +2082,6 @@ function _renderTutorialStep(modal) {
     </div>
   `;
 
-  modal.querySelector('.modal-close').addEventListener('click', () => {
-    modal.close();
-    _settings.hasSeenTutorial = true;
-    saveSettings(_settings);
-  });
   modal.querySelector('#tut-skip').addEventListener('click', () => {
     modal.close();
     _settings.hasSeenTutorial = true;
