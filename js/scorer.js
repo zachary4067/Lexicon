@@ -119,7 +119,7 @@ export function rankGuesses(candidates, n = 5) {
       vocabIndex:  gi,
       score:       scoreGuess(gi, candidates),
       pct:         0,
-      isCandidate: _answerSet.has(gi),
+     isCandidate: candidateWords.has(_vocabulary[gi]),  // word string lookup — no index ambiguity
     });
   }
 
