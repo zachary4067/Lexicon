@@ -91,7 +91,10 @@ export function scoreGuess(guessIdx, candidates) {
   for (let p = 0; p < 242; p++) {           // 242 excluded — win bucket not residual
     sumSq += buckets[p] * buckets[p];
   }
-  return sumSq / candidates.length;
+  // Subtract win bucket to credit immediate-solve probability.
+  // Makes non-candidate perfect-partitioners tie with candidate words
+  // at the same true game-tree expectation, allowing FR-13 to fire.
+  return (sumSq - buckets[242]) / candidates.length;
 }
 
 /**
