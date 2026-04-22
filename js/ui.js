@@ -1884,7 +1884,11 @@ export function onNewGame() {
     confirmLabel: 'New Game',
     confirmClass: 'safe',
     onConfirm: () => {
-      archiveCurrentGame(state);
+      // Only archive if game is still in progress — solved/failed games
+      // are already archived by onCalculate() at the moment of resolution
+      if (!state.solved && !state.failed) {
+        archiveCurrentGame(state);
+      }
       initGame();
       renderRound1();
     },
