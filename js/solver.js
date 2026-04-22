@@ -79,7 +79,7 @@ export function configure({ vocabulary, answers, matrix }) {
 
   // Inject into dependent modules
   setMatrix(matrix, answers.length);
-  setScorer(matrix, answers.length, vocabulary, answerSet);
+  setScorer(matrix, answers.length, vocabulary, answers, answerSet);
 }
 
 
