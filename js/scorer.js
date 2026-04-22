@@ -35,6 +35,7 @@
 let _patternMatrix = null;  // Uint8Array — shared with filter.js
 let _answerSize    = 0;     // number of answer words (matrix column stride)
 let _vocabulary    = [];    // string[] — all valid guess words
+let _answers       = [];
 let _answerSet     = null;  // Set<number> — answer indices within VOCABULARY
 
 /**
@@ -46,10 +47,11 @@ let _answerSet     = null;  // Set<number> — answer indices within VOCABULARY
  * @param {string[]}   vocabulary - All valid guess words (VOCABULARY array)
  * @param {Set<number>} answerSet - Set of VOCABULARY indices that are valid answers
  */
-export function setScorer(matrix, answerSize, vocabulary, answerSet) {
+export function setScorer(matrix, answerSize, vocabulary, answers, answerSet) {
   _patternMatrix = matrix;
   _answerSize    = answerSize;
   _vocabulary    = vocabulary;
+  _answers       = answers;    // ← ADD THIS LINE
   _answerSet     = answerSet;
 }
 
@@ -111,25 +113,23 @@ export function scoreGuess(guessIdx, candidates) {
  * @returns {Recommendation[]}    Top n recommendations, normalised
  */
 export function rankGuesses(candidates, n = 5) {
-  const recs = [];
+  const candidateWords = new Set(candidates.map(ai => _answers[ai]));
 
+  const recs = [];
   for (let gi = 0; gi < _vocabulary.length; gi++) {
     recs.push({
       word:        _vocabulary[gi],
       vocabIndex:  gi,
       score:       scoreGuess(gi, candidates),
       pct:         0,
-     isCandidate: candidateWords.has(_vocabulary[gi]),  // word string lookup — no index ambiguity
+      isCandidate: candidateWords.has(_vocabulary[gi]),
     });
   }
-
-  // Sort: score ASC → isCandidate DESC → vocabIndex ASC
   recs.sort((a, b) => {
-    if (a.score !== b.score)           return a.score - b.score;
+    if (a.score !== b.score) return a.score - b.score;
     if (a.isCandidate !== b.isCandidate) return b.isCandidate - a.isCandidate;
     return a.vocabIndex - b.vocabIndex;
   });
-
   return normaliseScores(recs.slice(0, n));
 }
 
